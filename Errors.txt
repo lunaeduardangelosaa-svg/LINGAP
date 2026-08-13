@@ -1,5 +1,18 @@
-[ WARN:0@9.181] global cap_gstreamer.cpp:2839 handleMessage OpenCV | GStreamer warning: Embedded video playback halted; module v4l2src0 reported: Cannot identify device '/dev/video0'.
-[ WARN:0@9.181] global cap_gstreamer.cpp:1698 open OpenCV | GStreamer warning: unable to start pipeline
-[ WARN:0@9.182] global cap_gstreamer.cpp:1173 isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
-[ WARN:0@9.182] global cap_v4l.cpp:999 open VIDEOIO(V4L2:/dev/video0): can't open camera by index
-[ERROR:0@9.589] global obsens
+
+>>> %Run main.py
+==============================================
+     PATIENT FACE RECOGNITION SYSTEM
+==============================================
+📂 Loading saved patient encodings...
+✅ Loaded 1 registered face(s).
+
+📷 Starting camera...
+[ WARN:0@4.332] global cap_gstreamer.cpp:2839 handleMessage OpenCV | GStreamer warning: Embedded video playback halted; module v4l2src0 reported: Cannot identify device '/dev/video0'.
+[ WARN:0@4.332] global cap_gstreamer.cpp:1698 open OpenCV | GStreamer warning: unable to start pipeline
+[ WARN:0@4.332] global cap_gstreamer.cpp:1173 isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+[ WARN:0@4.332] global cap_v4l.cpp:999 open VIDEOIO(V4L2:/dev/video0): can't open camera by index
+[ERROR:0@4.558] global obsensor_uvc_stream_channel.cpp:158 getStreamChannelGroup Camera index out of range
+❌ ERROR: Could not open camera!
+Check that your Raspberry Pi camera/USB camera is connected.
+
+Process ended with exit code 0.

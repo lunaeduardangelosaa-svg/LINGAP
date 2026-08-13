@@ -2,72 +2,137 @@ import cv2
 import face_recognition
 import pickle
 import os
+from picamera2 import Picamera2
 
-ENCODINGS_FILE = "known_faces.pkl"
+# ============================================================
+# SETTINGS
+# ============================================================
 
-# 1. Load your saved face dataset
+ENCODINGS_FILE = "known_face.pkl"
+
+# ============================================================
+# 1. LOAD SAVED FACE DATA
+# ============================================================
+
 if not os.path.exists(ENCODINGS_FILE):
-    print(f"❌ Error: Could not find '{ENCODINGS_FILE}'. Please run your registration script first!")
+    print(f"❌ Error: Could not find '{ENCODINGS_FILE}'.")
+    print("Make sure known_face.pkl is in the same folder as this program.")
     exit()
 
 print("Loading saved patient encodings...")
+
 with open(ENCODINGS_FILE, "rb") as f:
     data = pickle.load(f)
 
 known_encodings = data["encodings"]
 known_names = data["names"]
 
-# 2. Open the Raspberry Pi Camera
-cap = cv2.VideoCapture(0)
+print(f"✅ Loaded {len(known_names)} known face(s).")
 
-# Optional Pi Camera tweak: set lower resolution for speed
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+# ============================================================
+# 2. START RASPBERRY PI CAMERA
+# ============================================================
 
-print("📷 Camera active! Looking for faces... (Press Ctrl + C in terminal to stop)\n")
+print("Starting Raspberry Pi Camera...")
 
-last_printed_name = None  # Prevents spamming the terminal repeatedly for the same face
+picam2 = Picamera2()
+
+config = picam2.create_preview_configuration(
+    main={
+        "size": (640, 480),
+        "format": "RGB888"
+    }
+)
+
+picam2.configure(config)
+picam2.start()
+
+print("📷 Camera active! Looking for faces...")
+print("Press Ctrl + C to stop.\n")
+
+# ============================================================
+# 3. FACE RECOGNITION LOOP
+# ============================================================
+
+last_printed_name = None
 
 try:
+
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
 
-        # Resize frame to 1/4 size to speed up Raspberry Pi processing
-        small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        # Capture frame from Raspberry Pi Camera
+        frame = picam2.capture_array()
 
-        # Detect face locations and generate live encodings
-        face_locations = face_recognition.face_locations(rgb_small_frame)
-        face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+        # Resize to 1/4 for faster face recognition
+        small_frame = cv2.resize(
+            frame,
+            (0, 0),
+            fx=0.25,
+            fy=0.25
+        )
 
-        # If no faces are in front of the camera, reset tracker
+        # Picamera2 gives RGB already
+        rgb_small_frame = small_frame
+
+        # Find faces
+        face_locations = face_recognition.face_locations(
+            rgb_small_frame
+        )
+
+        # Generate face encodings
+        face_encodings = face_recognition.face_encodings(
+            rgb_small_frame,
+            face_locations
+        )
+
+        # No faces detected
         if not face_encodings:
             last_printed_name = None
             continue
 
+        # Check every detected face
         for face_encoding in face_encodings:
-            # Compare the live face against saved encodings
-            matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
+
+            matches = face_recognition.compare_faces(
+                known_encodings,
+                face_encoding,
+                tolerance=0.5
+            )
+
             name = "Unknown Face"
 
+            # If a match exists
             if True in matches:
+
                 matched_index = matches.index(True)
+
                 name = known_names[matched_index]
 
-            # Print to terminal only when a new face appears or status changes
+            # Only print when status changes
             if name != last_printed_name:
+
                 if name != "Unknown Face":
-                    print(f"🟢 RECOGNIZED PATIENT: {name}")
+
+                    print(
+                        f"🟢 RECOGNIZED PATIENT: {name}"
+                    )
+
                 else:
-                    print("🔴 WARNING: Unknown Face Detected")
-                
+
+                    print(
+                        "🔴 WARNING: Unknown Face Detected"
+                    )
+
                 last_printed_name = name
 
 except KeyboardInterrupt:
-    print("\nShutting down camera feed...")
+
+    print("\nStopping camera...")
 
 finally:
-    cap.release()
+
+    picam2.stop()
+
     cv2.destroyAllWindows()
+
+    print("Camera stopped.")

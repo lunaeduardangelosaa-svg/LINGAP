@@ -3,6 +3,7 @@ import face_recognition
 import pickle
 import os
 import time
+from picamera2 import Picamera2
 
 ENCODINGS_FILE = "known_face.pkl"
 
@@ -29,27 +30,38 @@ known_names = data["names"]
 print(f"✅ Loaded {len(known_names)} registered face(s).")
 
 # ============================================================
-# 2. OPEN CAMERA
+# 2. OPEN RASPBERRY PI CAMERA
 # ============================================================
 
-print("\n📷 Starting camera...")
+print("\n📷 Starting Raspberry Pi Camera...")
 
-cap = cv2.VideoCapture(0)
+try:
 
-# Camera resolution
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    picam2 = Picamera2()
 
-# Check if camera actually opened
-if not cap.isOpened():
-    print("❌ ERROR: Could not open camera!")
-    print("Check that your Raspberry Pi camera/USB camera is connected.")
+    camera_config = picam2.create_preview_configuration(
+        main={
+            "size": (640, 480),
+            "format": "RGB888"
+        }
+    )
+
+    picam2.configure(camera_config)
+
+    picam2.start()
+
+    time.sleep(2)
+
+    print("✅ CAMERA CONNECTED!")
+    print("🟢 CAMERA IS NOW ACTIVE")
+    print("🔴 Press 'q' in the camera window to stop.")
+    print("==============================================\n")
+
+except Exception as e:
+
+    print("❌ ERROR: Could not start Raspberry Pi Camera!")
+    print("Camera error:", e)
     exit()
-
-print("✅ CAMERA CONNECTED!")
-print("🟢 CAMERA IS NOW ACTIVE")
-print("🔴 Press 'q' in the camera window to stop.")
-print("==============================================\n")
 
 # ============================================================
 # 3. VARIABLES
@@ -67,12 +79,14 @@ try:
 
     while True:
 
-        # Read frame from camera
-        ret, frame = cap.read()
+        # ----------------------------------------------------
+        # Capture frame from Raspberry Pi Camera
+        # ----------------------------------------------------
 
-        # Check if camera is still working
-        if not ret:
-            print("⚠️ WARNING: Failed to read camera frame!")
+        frame = picam2.capture_array()
+
+        if frame is None:
+            print("⚠️ WARNING: Failed to capture frame!")
             continue
 
         frame_count += 1
@@ -88,11 +102,8 @@ try:
             fy=0.25
         )
 
-        # Convert BGR -> RGB
-        rgb_small_frame = cv2.cvtColor(
-            small_frame,
-            cv2.COLOR_BGR2RGB
-        )
+        # Picamera2 RGB888 already gives RGB
+        rgb_small_frame = small_frame
 
         # ----------------------------------------------------
         # Detect faces
@@ -143,7 +154,7 @@ try:
         )
 
         # ----------------------------------------------------
-        # If NO face detected
+        # NO FACE DETECTED
         # ----------------------------------------------------
 
         if not face_encodings:
@@ -158,11 +169,10 @@ try:
                 2
             )
 
-            # Reset previous person
             last_printed_name = None
 
         # ----------------------------------------------------
-        # If face(s) detected
+        # FACE(S) DETECTED
         # ----------------------------------------------------
 
         else:
@@ -177,15 +187,18 @@ try:
                 2
             )
 
+            # ------------------------------------------------
             # Process every detected face
+            # ------------------------------------------------
+
             for face_encoding, face_location in zip(
                 face_encodings,
                 face_locations
             ):
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Compare face with registered patients
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 matches = face_recognition.compare_faces(
                     known_encodings,
@@ -195,16 +208,19 @@ try:
 
                 name = "Unknown Face"
 
+                # --------------------------------------------
                 # Find matching patient
+                # --------------------------------------------
+
                 if True in matches:
 
                     matched_index = matches.index(True)
 
                     name = known_names[matched_index]
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Print result only when status changes
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 if name != last_printed_name:
 
@@ -222,9 +238,9 @@ try:
 
                     last_printed_name = name
 
-                # ------------------------------------------------
-                # Convert face coordinates back to full size
-                # ------------------------------------------------
+                # --------------------------------------------
+                # Convert face coordinates to full size
+                # --------------------------------------------
 
                 top, right, bottom, left = face_location
 
@@ -233,9 +249,9 @@ try:
                 bottom *= 4
                 left *= 4
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Choose box color
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 if name == "Unknown Face":
 
@@ -245,9 +261,9 @@ try:
 
                     color = (0, 255, 0)
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Draw rectangle around face
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 cv2.rectangle(
                     frame,
@@ -257,9 +273,9 @@ try:
                     2
                 )
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Draw name label
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 cv2.rectangle(
                     frame,
@@ -279,16 +295,19 @@ try:
                     1
                 )
 
-        # ========================================================
+        # ====================================================
         # SHOW CAMERA WINDOW
-        # ========================================================
+        # ====================================================
 
         cv2.imshow(
             "Patient Face Recognition - CAMERA ACTIVE",
             frame
         )
 
+        # ----------------------------------------------------
         # Press Q to stop
+        # ----------------------------------------------------
+
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord("q"):
@@ -312,9 +331,12 @@ except KeyboardInterrupt:
 
 finally:
 
-    print("📷 Releasing camera...")
+    print("📷 Stopping Raspberry Pi Camera...")
 
-    cap.release()
+    try:
+        picam2.stop()
+    except:
+        pass
 
     cv2.destroyAllWindows()
 

@@ -19,6 +19,16 @@ class PrescriptionHandler:
             frame
         )
 
+        rgb = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
+        )
+
+        original_text = pytesseract.image_to_string(
+            rgb,
+            config="--psm 3"
+        )
+
         gray = cv2.cvtColor(
             frame,
             cv2.COLOR_BGR2GRAY
@@ -27,8 +37,8 @@ class PrescriptionHandler:
         gray = cv2.resize(
             gray,
             None,
-            fx=2,
-            fy=2,
+            fx=3,
+            fy=3,
             interpolation=cv2.INTER_CUBIC
         )
 
@@ -38,24 +48,41 @@ class PrescriptionHandler:
             0
         )
 
-        processed = cv2.threshold(
+        processed = cv2.adaptiveThreshold(
             gray,
-            0,
             255,
-            cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )[1]
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            11
+        )
+
+        processed = cv2.morphologyEx(
+            processed,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(
+                cv2.MORPH_RECT,
+                (2, 2)
+            )
+        )
 
         cv2.imwrite(
             self.processed_path,
             processed
         )
 
-        text = pytesseract.image_to_string(
+        processed_text = pytesseract.image_to_string(
             processed,
-            config="--psm 6"
+            config="--psm 3"
         )
 
-        return text.strip()
+        original_text = original_text.strip()
+        processed_text = processed_text.strip()
+
+        if len(processed_text) > len(original_text):
+            return processed_text
+
+        return original_text
 
     def display(self, text):
 
@@ -70,6 +97,7 @@ class PrescriptionHandler:
             print("No text detected.")
 
         print("================================")
+        print()
 
     def read_from_camera(self, camera):
 
@@ -77,9 +105,9 @@ class PrescriptionHandler:
         print("================================")
         print("   PRESCRIPTION READER")
         print("================================")
-        print("Place prescription in camera.")
-        print("SPACE = capture")
-        print("Q = cancel")
+        print("Place prescription in front of camera.")
+        print("SPACE = CAPTURE")
+        print("Q = CANCEL")
         print("================================")
 
         while True:
@@ -91,12 +119,22 @@ class PrescriptionHandler:
 
             display = frame.copy()
 
+            height, width = display.shape[:2]
+
+            cv2.rectangle(
+                display,
+                (40, 90),
+                (width - 40, height - 90),
+                (0, 255, 255),
+                2
+            )
+
             cv2.putText(
                 display,
-                "PLACE PRESCRIPTION HERE",
-                (20, 40),
+                "PLACE PRESCRIPTION INSIDE BOX",
+                (50, 50),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
+                0.65,
                 (0, 255, 255),
                 2
             )
@@ -104,7 +142,7 @@ class PrescriptionHandler:
             cv2.putText(
                 display,
                 "SPACE = CAPTURE   Q = CANCEL",
-                (20, 75),
+                (50, height - 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 (255, 255, 255),
@@ -132,6 +170,9 @@ class PrescriptionHandler:
         cv2.destroyWindow(
             "Prescription Reader"
         )
+
+        print()
+        print("Capturing prescription...")
 
         text = self.read(frame)
 

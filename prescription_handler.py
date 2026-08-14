@@ -1,14 +1,12 @@
 import cv2
 import requests
-import os
 
 
 class PrescriptionHandler:
 
-    def __init__(self, api_key="helloworld"):
+    def __init__(self, api_key):
         self.api_url = "https://api.ocr.space/parse/image"
         self.api_key = api_key
-
         self.image_path = "prescription.jpg"
 
     def read(self, frame):
@@ -46,7 +44,7 @@ class PrescriptionHandler:
 
             if response.status_code != 200:
                 print(
-                    "OCR API error:",
+                    "OCR HTTP ERROR:",
                     response.status_code
                 )
                 return None
@@ -54,12 +52,23 @@ class PrescriptionHandler:
             result = response.json()
 
             if result.get("IsErroredOnProcessing"):
+
                 errors = result.get(
                     "ErrorMessage",
                     "Unknown OCR error"
                 )
 
-                print("OCR error:", errors)
+                if isinstance(errors, list):
+                    errors = " ".join(
+                        str(error)
+                        for error in errors
+                    )
+
+                print(
+                    "OCR ERROR:",
+                    errors
+                )
+
                 return None
 
             parsed_results = result.get(
@@ -68,6 +77,7 @@ class PrescriptionHandler:
             )
 
             if not parsed_results:
+                print("OCR returned no results.")
                 return None
 
             text_parts = []
@@ -85,24 +95,25 @@ class PrescriptionHandler:
                     )
 
             if not text_parts:
+                print("No text detected.")
                 return None
 
             return "\n".join(text_parts)
 
-        except requests.RequestException as e:
+        except requests.RequestException as error:
 
             print(
-                "Could not connect to OCR service:",
-                e
+                "OCR CONNECTION ERROR:",
+                error
             )
 
             return None
 
-        except Exception as e:
+        except Exception as error:
 
             print(
-                "OCR error:",
-                e
+                "OCR ERROR:",
+                error
             )
 
             return None
@@ -117,7 +128,7 @@ class PrescriptionHandler:
         if text:
             print(text)
         else:
-            print("No text detected.")
+            print("NO TEXT DETECTED")
 
         print("================================")
         print()
@@ -128,7 +139,7 @@ class PrescriptionHandler:
         print("================================")
         print("   PRESCRIPTION READER")
         print("================================")
-        print("Place prescription in front of camera.")
+        print("Place prescription inside the box.")
         print("SPACE = CAPTURE")
         print("Q = CANCEL")
         print("================================")
@@ -196,7 +207,7 @@ class PrescriptionHandler:
 
         print()
         print("Capturing prescription...")
-        print("Sending image to OCR service...")
+        print("Sending image to OCR.space...")
 
         text = self.read(frame)
 

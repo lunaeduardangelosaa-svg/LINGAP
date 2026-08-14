@@ -1,13 +1,15 @@
 import cv2
-import pytesseract
+import requests
 import os
 
 
 class PrescriptionHandler:
 
-    def __init__(self):
+    def __init__(self, api_key="helloworld"):
+        self.api_url = "https://api.ocr.space/parse/image"
+        self.api_key = api_key
+
         self.image_path = "prescription.jpg"
-        self.processed_path = "prescription_processed.jpg"
 
     def read(self, frame):
 
@@ -19,70 +21,91 @@ class PrescriptionHandler:
             frame
         )
 
-        rgb = cv2.cvtColor(
-            frame,
-            cv2.COLOR_BGR2RGB
-        )
+        try:
 
-        original_text = pytesseract.image_to_string(
-            rgb,
-            config="--psm 3"
-        )
+            with open(
+                self.image_path,
+                "rb"
+            ) as image_file:
 
-        gray = cv2.cvtColor(
-            frame,
-            cv2.COLOR_BGR2GRAY
-        )
+                response = requests.post(
+                    self.api_url,
+                    files={
+                        "file": image_file
+                    },
+                    data={
+                        "apikey": self.api_key,
+                        "language": "eng",
+                        "isOverlayRequired": "false",
+                        "detectOrientation": "true",
+                        "scale": "true",
+                        "OCREngine": "2"
+                    },
+                    timeout=60
+                )
 
-        gray = cv2.resize(
-            gray,
-            None,
-            fx=3,
-            fy=3,
-            interpolation=cv2.INTER_CUBIC
-        )
+            if response.status_code != 200:
+                print(
+                    "OCR API error:",
+                    response.status_code
+                )
+                return None
 
-        gray = cv2.GaussianBlur(
-            gray,
-            (3, 3),
-            0
-        )
+            result = response.json()
 
-        processed = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            31,
-            11
-        )
+            if result.get("IsErroredOnProcessing"):
+                errors = result.get(
+                    "ErrorMessage",
+                    "Unknown OCR error"
+                )
 
-        processed = cv2.morphologyEx(
-            processed,
-            cv2.MORPH_CLOSE,
-            cv2.getStructuringElement(
-                cv2.MORPH_RECT,
-                (2, 2)
+                print("OCR error:", errors)
+                return None
+
+            parsed_results = result.get(
+                "ParsedResults",
+                []
             )
-        )
 
-        cv2.imwrite(
-            self.processed_path,
-            processed
-        )
+            if not parsed_results:
+                return None
 
-        processed_text = pytesseract.image_to_string(
-            processed,
-            config="--psm 3"
-        )
+            text_parts = []
 
-        original_text = original_text.strip()
-        processed_text = processed_text.strip()
+            for item in parsed_results:
 
-        if len(processed_text) > len(original_text):
-            return processed_text
+                text = item.get(
+                    "ParsedText",
+                    ""
+                )
 
-        return original_text
+                if text.strip():
+                    text_parts.append(
+                        text.strip()
+                    )
+
+            if not text_parts:
+                return None
+
+            return "\n".join(text_parts)
+
+        except requests.RequestException as e:
+
+            print(
+                "Could not connect to OCR service:",
+                e
+            )
+
+            return None
+
+        except Exception as e:
+
+            print(
+                "OCR error:",
+                e
+            )
+
+            return None
 
     def display(self, text):
 
@@ -173,6 +196,7 @@ class PrescriptionHandler:
 
         print()
         print("Capturing prescription...")
+        print("Sending image to OCR service...")
 
         text = self.read(frame)
 

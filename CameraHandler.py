@@ -1,105 +1,56 @@
-```python
 import cv2
 import face_recognition
 import pickle
 import os
 import time
-import threading
 from picamera2 import Picamera2
 
-
-# ============================================================
-# SETTINGS
-# ============================================================
-
-ENCODINGS_FILE = "known_faces.pkl"
-PHOTO_FOLDER = "faces"
+ENCODINGS_FILE = "known_face.pkl"
+PHOTO_FILE = "known_face.jpg"
 
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
 SCALE = 0.25
 COUNTDOWN_SECONDS = 3
-
-# Face recognition tolerance
-# Lower = stricter
 TOLERANCE = 0.5
 
+known_encoding = None
+mode = "idle"
+running = True
 
-# ============================================================
-# CREATE PHOTO FOLDER
-# ============================================================
-
-if not os.path.exists(PHOTO_FOLDER):
-    os.makedirs(PHOTO_FOLDER)
-
-
-# ============================================================
-# LOAD DATABASE
-# ============================================================
+countdown_active = False
+countdown_start = 0
+last_countdown_second = -1
 
 if os.path.exists(ENCODINGS_FILE):
-
     try:
-
         with open(ENCODINGS_FILE, "rb") as f:
             data = pickle.load(f)
 
-        known_encodings = data.get("encodings", [])
-        known_names = data.get("names", [])
-
-        print(
-            f"✅ Loaded {len(known_names)} registered face(s)."
-        )
+        if len(data.get("encodings", [])) > 0:
+            known_encoding = data["encodings"][0]
+            print("Registered face loaded.")
+        else:
+            print("No registered face found.")
 
     except Exception as e:
-
-        print("⚠️ Database could not be loaded.")
+        print("Could not load registered face.")
         print(e)
 
-        known_encodings = []
-        known_names = []
-
 else:
+    print("No registered face found.")
+    print("Press E to register your face.")
 
-    print("ℹ️ No face database found.")
-    print("A new database will be created.")
-
-    known_encodings = []
-    known_names = []
-
-
-# ============================================================
-# SAVE DATABASE
-# ============================================================
-
-def save_database():
-
-    data = {
-        "names": known_names,
-        "encodings": known_encodings
-    }
-
-    with open(ENCODINGS_FILE, "wb") as f:
-        pickle.dump(data, f)
-
-    print("💾 Face database saved.")
-
-
-# ============================================================
-# START CAMERA
-# ============================================================
-
-print()
 print("==============================================")
-print("   RASPBERRY PI FACE RECOGNITION SYSTEM")
+print("       RASPBERRY PI FACE SYSTEM")
 print("==============================================")
-print()
-
-print("📷 Starting Raspberry Pi camera...")
+print("E = REGISTER FACE")
+print("R = RECOGNIZE FACE")
+print("Q = QUIT")
+print("==============================================")
 
 try:
-
     picam2 = Picamera2()
 
     camera_config = picam2.create_preview_configuration(
@@ -110,87 +61,31 @@ try:
     )
 
     picam2.configure(camera_config)
-
     picam2.start()
 
     time.sleep(2)
 
-    print("✅ Camera ready.")
+    print("Camera ready.")
 
 except Exception as e:
-
-    print("❌ Camera could not start.")
+    print("Camera could not start.")
     print(e)
     exit()
 
 
-# ============================================================
-# CAMERA STATE
-# ============================================================
-
-mode = "idle"
-
-running = True
-
-countdown_active = False
-countdown_start = 0
-
-last_countdown_second = -1
-
-
-# ============================================================
-# PRIMARY FACE
-# ============================================================
-
 def get_primary_face(face_locations):
-
     if not face_locations:
         return None
 
     def area(location):
-
         top, right, bottom, left = location
+        return (right - left) * (bottom - top)
 
-        width = right - left
-        height = bottom - top
-
-        return width * height
-
-    return max(
-        face_locations,
-        key=area
-    )
+    return max(face_locations, key=area)
 
 
-# ============================================================
-# ENROLLMENT
-# ============================================================
-
-def enroll_face(frame, face_location):
-
-    global known_encodings
-    global known_names
-
-    print()
-    print("==============================================")
-    print("             FACE DETECTED")
-    print("==============================================")
-
-    # --------------------------------------------------------
-    # Ask for name
-    # --------------------------------------------------------
-
-    name = input("Enter person's name: ").strip()
-
-    if name == "":
-
-        print("❌ Name cannot be empty.")
-        return False
-
-
-    # --------------------------------------------------------
-    # Convert coordinates back to full resolution
-    # --------------------------------------------------------
+def save_face(frame, face_location):
+    global known_encoding
 
     top, right, bottom, left = face_location
 
@@ -199,144 +94,66 @@ def enroll_face(frame, face_location):
     bottom = int(bottom / SCALE)
     left = int(left / SCALE)
 
-
-    # --------------------------------------------------------
-    # Add padding for saved photo
-    # --------------------------------------------------------
-
     padding = 40
 
     crop_top = max(0, top - padding)
-    crop_bottom = min(
-        frame.shape[0],
-        bottom + padding
-    )
-
+    crop_bottom = min(frame.shape[0], bottom + padding)
     crop_left = max(0, left - padding)
-    crop_right = min(
-        frame.shape[1],
-        right + padding
-    )
-
+    crop_right = min(frame.shape[1], right + padding)
 
     face_photo = frame[
         crop_top:crop_bottom,
         crop_left:crop_right
     ]
 
-
     if face_photo.size == 0:
-
-        print("❌ Could not capture face.")
+        print("Could not capture face.")
         return False
 
-
-    # --------------------------------------------------------
-    # SAVE PHOTO
-    # --------------------------------------------------------
-
-    safe_name = "".join(
-        c for c in name
-        if c.isalnum() or c in (" ", "_", "-")
-    ).strip()
-
-    photo_path = os.path.join(
-        PHOTO_FOLDER,
-        safe_name + ".jpg"
-    )
-
-    cv2.imwrite(
-        photo_path,
-        face_photo
-    )
-
-    print(f"📸 Photo saved: {photo_path}")
-
-
-    # --------------------------------------------------------
-    # CREATE ENCODING
-    # --------------------------------------------------------
-
-    print("🧠 Creating face encoding...")
+    cv2.imwrite(PHOTO_FILE, face_photo)
 
     rgb_face = cv2.cvtColor(
         face_photo,
         cv2.COLOR_BGR2RGB
     )
 
-    encodings = face_recognition.face_encodings(
-        rgb_face
-    )
-
+    encodings = face_recognition.face_encodings(rgb_face)
 
     if len(encodings) == 0:
-
-        print("❌ Could not create face encoding.")
-        print("Try again with better lighting.")
-
+        print("Could not create face encoding.")
         return False
 
+    known_encoding = encodings[0]
 
-    # --------------------------------------------------------
-    # ADD TO DATABASE
-    # --------------------------------------------------------
+    data = {
+        "encoding": known_encoding,
+        "encodings": [known_encoding]
+    }
 
-    known_encodings.append(
-        encodings[0]
-    )
+    with open(ENCODINGS_FILE, "wb") as f:
+        pickle.dump(data, f)
 
-    known_names.append(
-        name
-    )
-
-
-    # --------------------------------------------------------
-    # SAVE DATABASE
-    # --------------------------------------------------------
-
-    save_database()
-
-
-    print()
     print("==============================================")
-    print("        ✅ FACE REGISTERED")
+    print("FACE REGISTERED")
     print("==============================================")
-    print(f"👤 Name: {name}")
-    print(f"📸 Photo: {photo_path}")
-    print(f"👥 Total registered: {len(known_names)}")
+    print("Your face has been saved.")
     print("==============================================")
-    print()
 
     return True
 
 
-# ============================================================
-# RECOGNITION
-# ============================================================
-
-def recognize_face(frame):
-
-    global known_encodings
-    global known_names
-
-    if len(known_encodings) == 0:
-
+def recognize(frame):
+    if known_encoding is None:
         cv2.putText(
             frame,
-            "NO REGISTERED FACES",
+            "NO FACE REGISTERED",
             (20, 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             (0, 0, 255),
             2
         )
-
         return
-
-
-    # --------------------------------------------------------
-    # Resize
-    # --------------------------------------------------------
 
     small_frame = cv2.resize(
         frame,
@@ -345,66 +162,25 @@ def recognize_face(frame):
         fy=SCALE
     )
 
-    rgb_small = small_frame
-
-
-    # --------------------------------------------------------
-    # Detect faces
-    # --------------------------------------------------------
-
     face_locations = face_recognition.face_locations(
-        rgb_small
+        small_frame
     )
 
     face_encodings = face_recognition.face_encodings(
-        rgb_small,
+        small_frame,
         face_locations
     )
-
-
-    # --------------------------------------------------------
-    # Process every face
-    # --------------------------------------------------------
 
     for face_encoding, location in zip(
         face_encodings,
         face_locations
     ):
+        distance = face_recognition.face_distance(
+            [known_encoding],
+            face_encoding
+        )[0]
 
-        matches = face_recognition.compare_faces(
-            known_encodings,
-            face_encoding,
-            tolerance=TOLERANCE
-        )
-
-
-        # ----------------------------------------------------
-        # Find best match
-        # ----------------------------------------------------
-
-        name = "Unknown"
-
-
-        if len(known_encodings) > 0:
-
-            face_distances = face_recognition.face_distance(
-                known_encodings,
-                face_encoding
-            )
-
-            best_match_index = face_distances.argmin()
-
-
-            if matches[best_match_index]:
-
-                name = known_names[
-                    best_match_index
-                ]
-
-
-        # ----------------------------------------------------
-        # Coordinates
-        # ----------------------------------------------------
+        match = distance <= TOLERANCE
 
         top, right, bottom, left = location
 
@@ -413,94 +189,44 @@ def recognize_face(frame):
         bottom = int(bottom / SCALE)
         left = int(left / SCALE)
 
-
-        # ----------------------------------------------------
-        # Color
-        # ----------------------------------------------------
-
-        if name == "Unknown":
-
-            color = (0, 0, 255)
-
-        else:
-
+        if match:
+            label = "KNOWN FACE"
             color = (0, 255, 0)
-
-
-        # ----------------------------------------------------
-        # Face box
-        # ----------------------------------------------------
+        else:
+            label = "UNKNOWN"
+            color = (0, 0, 255)
 
         cv2.rectangle(
             frame,
             (left, top),
             (right, bottom),
             color,
-            2
+            3
         )
-
-
-        # ----------------------------------------------------
-        # Name background
-        # ----------------------------------------------------
 
         cv2.rectangle(
             frame,
-            (left, bottom - 35),
+            (left, bottom - 40),
             (right, bottom),
             color,
             cv2.FILLED
         )
 
-
-        # ----------------------------------------------------
-        # Name
-        # ----------------------------------------------------
-
         cv2.putText(
             frame,
-            name,
-            (left + 6, bottom - 8),
+            label,
+            (left + 5, bottom - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            0.65,
             (255, 255, 255),
             2
         )
 
 
-        # ----------------------------------------------------
-        # Print result
-        # ----------------------------------------------------
-
-        if name == "Unknown":
-
-            print("🔴 UNKNOWN FACE")
-
-        else:
-
-            print(
-                f"🟢 RECOGNIZED: {name}"
-            )
-
-
-# ============================================================
-# MAIN CAMERA LOOP
-# ============================================================
-
 try:
-
     while running:
 
-        # ----------------------------------------------------
-        # Capture frame
-        # ----------------------------------------------------
-
         frame = picam2.capture_array()
-
-
-        # ====================================================
-        # ENROLLMENT MODE
-        # ====================================================
 
         if mode == "enroll":
 
@@ -515,11 +241,6 @@ try:
                 small_frame
             )
 
-
-            # ------------------------------------------------
-            # No face
-            # ------------------------------------------------
-
             if len(face_locations) == 0:
 
                 cv2.putText(
@@ -532,20 +253,10 @@ try:
                     2
                 )
 
-
                 if countdown_active:
-
-                    print(
-                        "⚠️ Face lost. Countdown cancelled."
-                    )
-
                     countdown_active = False
                     last_countdown_second = -1
-
-
-            # ------------------------------------------------
-            # Face detected
-            # ------------------------------------------------
+                    print("Face lost. Countdown cancelled.")
 
             else:
 
@@ -553,66 +264,41 @@ try:
                     face_locations
                 )
 
-
                 top, right, bottom, left = primary_face
 
-                top = int(top / SCALE)
-                right = int(right / SCALE)
-                bottom = int(bottom / SCALE)
-                left = int(left / SCALE)
-
-
-                # Draw primary face
+                display_top = int(top / SCALE)
+                display_right = int(right / SCALE)
+                display_bottom = int(bottom / SCALE)
+                display_left = int(left / SCALE)
 
                 cv2.rectangle(
                     frame,
-                    (left, top),
-                    (right, bottom),
+                    (display_left, display_top),
+                    (display_right, display_bottom),
                     (0, 255, 0),
                     3
                 )
-
-
-                # ------------------------------------------------
-                # Start countdown
-                # ------------------------------------------------
 
                 if not countdown_active:
 
                     countdown_active = True
                     countdown_start = time.time()
-
                     last_countdown_second = -1
 
-                    print()
-                    print("🟢 PRIMARY FACE DETECTED")
-                    print("⏳ Starting 3-second countdown...")
-
-
-                # ------------------------------------------------
-                # Countdown
-                # ------------------------------------------------
+                    print("Face detected.")
+                    print("Hold still.")
 
                 elapsed = time.time() - countdown_start
-
                 remaining = COUNTDOWN_SECONDS - elapsed
-
 
                 if remaining > 0:
 
-                    current_second = int(
-                        remaining
-                    ) + 1
-
+                    current_second = int(remaining) + 1
 
                     if current_second != last_countdown_second:
 
-                        print(
-                            f"📸 {current_second}..."
-                        )
-
+                        print(current_second)
                         last_countdown_second = current_second
-
 
                     cv2.putText(
                         frame,
@@ -627,7 +313,6 @@ try:
                         6
                     )
 
-
                     cv2.putText(
                         frame,
                         "HOLD STILL",
@@ -638,45 +323,21 @@ try:
                         2
                     )
 
-
-                # ------------------------------------------------
-                # Capture after countdown
-                # ------------------------------------------------
-
                 else:
 
                     countdown_active = False
-
-                    success = enroll_face(
-                        frame,
-                        primary_face
-                    )
-
-
-                    if success:
-
-                        mode = "idle"
-
-                    else:
-
-                        mode = "idle"
-
-
                     last_countdown_second = -1
 
-
-        # ====================================================
-        # RECOGNITION MODE
-        # ====================================================
+                    if save_face(frame, primary_face):
+                        mode = "idle"
 
         elif mode == "recognize":
 
-            recognize_face(frame)
-
+            recognize(frame)
 
             cv2.putText(
                 frame,
-                "RECOGNITION MODE",
+                "RECOGNITION",
                 (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.8,
@@ -684,16 +345,11 @@ try:
                 2
             )
 
-
-        # ====================================================
-        # IDLE MODE
-        # ====================================================
-
         else:
 
             cv2.putText(
                 frame,
-                "E = ENROLL    R = RECOGNIZE    Q = QUIT",
+                "E REGISTER   R RECOGNIZE   Q QUIT",
                 (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.55,
@@ -701,104 +357,42 @@ try:
                 2
             )
 
-
-        # ====================================================
-        # SHOW CAMERA
-        # ====================================================
-
         cv2.imshow(
             "Raspberry Pi Face System",
             frame
         )
 
-
-        # ====================================================
-        # KEYBOARD INPUT
-        # ====================================================
-
         key = cv2.waitKey(1) & 0xFF
-
-
-        # ----------------------------------------------------
-        # E = ENROLL
-        # ----------------------------------------------------
 
         if key == ord("e"):
 
-            if mode != "enroll":
+            print("Registration mode.")
 
-                print()
-                print("==============================================")
-                print("              ENROLL MODE")
-                print("==============================================")
-                print("Look at the camera.")
-                print()
-
-                mode = "enroll"
-
-                countdown_active = False
-                last_countdown_second = -1
-
-
-        # ----------------------------------------------------
-        # R = RECOGNIZE
-        # ----------------------------------------------------
+            mode = "enroll"
+            countdown_active = False
+            last_countdown_second = -1
 
         elif key == ord("r"):
 
-            print()
-            print("==============================================")
-            print("           RECOGNITION MODE")
-            print("==============================================")
-            print("Looking for registered faces...")
-            print("Press E to enroll.")
-            print()
+            print("Recognition mode.")
 
             mode = "recognize"
-
             countdown_active = False
-
-
-        # ----------------------------------------------------
-        # Q = QUIT
-        # ----------------------------------------------------
 
         elif key == ord("q"):
 
-            print()
-            print("🛑 Shutting down...")
             running = False
 
-
-# ============================================================
-# CTRL+C
-# ============================================================
-
 except KeyboardInterrupt:
-
-    print()
-    print("🛑 Program interrupted.")
-
-
-# ============================================================
-# CLEANUP
-# ============================================================
+    pass
 
 finally:
 
-    print("📷 Stopping camera...")
-
     try:
-
         picam2.stop()
-
     except:
-
         pass
-
 
     cv2.destroyAllWindows()
 
-    print("✅ Camera stopped.")
-    print("👋 Program ended.")
-```
+    print("System stopped.")

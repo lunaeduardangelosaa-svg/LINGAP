@@ -1,16 +1,15 @@
+import cv2
+
 from camera_handler import CameraHandler
 from prescription_handler import PrescriptionHandler
 
 
 camera = CameraHandler()
-prescription = PrescriptionHandler()
+prescription = PrescriptionHandler(
+    api_key="YOUR_API_KEY"
+)
 
 camera.start()
-
-print("E = ENROLL")
-print("R = RECOGNIZE")
-print("P = PRESCRIPTION")
-print("Q = QUIT")
 
 
 try:
@@ -62,7 +61,9 @@ try:
 
         elif key == ord("p"):
 
-            prescription.read_from_camera(camera)
+            prescription.read_from_camera(
+                camera
+            )
 
             camera.set_mode("idle")
 

@@ -664,6 +664,22 @@ class FingerprintHandler:
 
 
     # ============================================================
+    # CLEAR ALL FINGERPRINT DATA
+    # ============================================================
+
+    def clear_database(self):
+
+        if not self.connected:
+            raise RuntimeError(
+                "Fingerprint sensor is not connected."
+            )
+
+        self.sensor.clearDatabase()
+
+        return True
+
+
+    # ============================================================
     # RESET ALL FINGERPRINT DATA
     # ============================================================
 
@@ -682,16 +698,6 @@ class FingerprintHandler:
         print("   RESET FINGERPRINT DATABASE")
         print("================================")
         print()
-        print(
-            "WARNING:"
-        )
-        print(
-            "This will permanently delete ALL"
-        )
-        print(
-            "fingerprints stored in the sensor."
-        )
-        print()
 
         confirmation = input(
             "Type RESET FINGERPRINT to continue: "
@@ -707,7 +713,7 @@ class FingerprintHandler:
 
         try:
 
-            self.sensor.clearDatabase()
+            self.clear_database()
 
             print()
             print("================================")
@@ -751,85 +757,3 @@ class FingerprintHandler:
 # =================================================================
 # STANDALONE TEST
 # =================================================================
-
-if __name__ == "__main__":
-
-    fingerprint = FingerprintHandler()
-
-    if not fingerprint.is_connected():
-
-        print(
-            "Fingerprint sensor unavailable."
-        )
-
-        sys.exit(1)
-
-    while True:
-
-        print()
-        print("================================")
-        print("      FINGERPRINT MANAGER")
-        print("================================")
-        print("F = Register fingerprint")
-        print("G = Fingerprint login")
-        print("H = Reset fingerprint database")
-        print("L = Show fingerprint count")
-        print("Q = Quit")
-        print("================================")
-
-        key = input(
-            "Select: "
-        ).strip().lower()
-
-        if key == "f":
-
-            value = input(
-                "Enter Person ID: "
-            ).strip()
-
-            try:
-
-                person_id = int(value)
-
-                fingerprint.enroll(
-                    person_id
-                )
-
-            except ValueError:
-
-                print(
-                    "Invalid Person ID."
-                )
-
-        elif key == "g":
-
-            fingerprint.login()
-
-        elif key == "h":
-
-            fingerprint.reset_all()
-
-        elif key == "l":
-
-            print()
-            print(
-                "Stored fingerprints:",
-                fingerprint.get_count()
-            )
-
-            print(
-                "Sensor capacity:",
-                fingerprint.get_capacity()
-            )
-
-        elif key == "q":
-
-            break
-
-        else:
-
-            print(
-                "Unknown command."
-            )
-
-    fingerprint.close()

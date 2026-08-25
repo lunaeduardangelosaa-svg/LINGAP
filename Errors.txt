@@ -1,2 +1,9 @@
+import serial
 
-[DIAG] t=28.9s poll#164 readImage() -> False (no finger detected yet, False count: 164)
+ser = serial.Serial("/dev/ttyAMA0", 57600, timeout=2)
+
+ser.write(bytes.fromhex("EF01FFFFFFFF0100071300000000001B"))
+
+data = ser.read(20)
+
+print(data.hex(" "))

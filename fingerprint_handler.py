@@ -1,6 +1,4 @@
 import time
-import os
-import sys
 
 from pyfingerprint.pyfingerprint import (
     PyFingerprint,
@@ -36,15 +34,22 @@ class FingerprintHandler:
 
     def connect(self):
 
+        print()
+        print("================================")
+        print("     FINGERPRINT SENSOR")
+        print("================================")
+
+        print(
+            "Port:",
+            self.port
+        )
+
+        print(
+            "Baudrate:",
+            self.baudrate
+        )
+
         try:
-
-            print()
-            print("================================")
-            print("     FINGERPRINT SENSOR")
-            print("================================")
-
-            print("Port:", self.port)
-            print("Baudrate:", self.baudrate)
 
             self.sensor = PyFingerprint(
                 self.port,
@@ -55,12 +60,13 @@ class FingerprintHandler:
 
             if not self.sensor.verifyPassword():
 
-                raise Exception(
+                raise RuntimeError(
                     "Incorrect fingerprint sensor password."
                 )
 
             self.connected = True
 
+            print()
             print(
                 "Fingerprint sensor connected."
             )
@@ -75,7 +81,9 @@ class FingerprintHandler:
                 self.sensor.getTemplateCount()
             )
 
-            print("================================")
+            print(
+                "================================"
+            )
             print()
 
             return True
@@ -89,15 +97,30 @@ class FingerprintHandler:
             print("================================")
             print(" FINGERPRINT CONNECTION FAILED")
             print("================================")
-            print("Error:", error)
+
+            print(
+                "Error:",
+                error
+            )
+
             print()
-            print("Check:")
-            print("VCC  -> Pin 2 (5V)")
-            print("GND  -> Pin 6")
-            print("TX   -> Pin 10 (GPIO15 RXD)")
-            print("RX   -> Pin 8 (GPIO14 TXD)")
+            print("AS608 wiring:")
+            print("VCC -> Pin 2 (5V)")
+            print("GND -> Pin 6 (GND)")
+            print("TX  -> Pin 10 (GPIO15 / RXD)")
+            print("RX  -> Pin 8  (GPIO14 / TXD)")
+
             print()
-            print("================================")
+            print(
+                "Fingerprint functions will remain"
+            )
+            print(
+                "disabled until the sensor connects."
+            )
+
+            print(
+                "================================"
+            )
             print()
 
             return False
@@ -132,7 +155,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # STORED COUNT
+    # COUNT
     # ============================================================
 
     def get_count(self):
@@ -151,10 +174,13 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # CHECK WHETHER TEMPLATE ID IS VALID
+    # VALID ID
     # ============================================================
 
-    def valid_id(self, person_id):
+    def valid_id(
+        self,
+        person_id
+    ):
 
         if not self.connected:
 
@@ -163,14 +189,17 @@ class FingerprintHandler:
         capacity = self.get_capacity()
 
         return (
-            isinstance(person_id, int)
+            isinstance(
+                person_id,
+                int
+            )
             and person_id >= 0
             and person_id < capacity
         )
 
 
     # ============================================================
-    # WAIT FOR FINGER
+    # WAIT FOR FINGER (WITH DIAGNOSTIC LOGGING)
     # ============================================================
 
     def wait_for_finger(
@@ -180,41 +209,105 @@ class FingerprintHandler:
 
         if not self.connected:
 
+            print(
+                "[DIAG] wait_for_finger() aborted: "
+                "sensor not connected."
+            )
+
             return False
 
         print()
-        print("Place your finger on the sensor...")
+        print(
+            "Place your finger on the sensor..."
+        )
+
+        print(
+            "[DIAG] Polling readImage() every 0.1s, "
+            "timeout =", timeout, "s"
+        )
 
         start = time.time()
+        poll_count = 0
+        false_count = 0
+        error_count = 0
 
         while (
             time.time() - start
             < timeout
         ):
 
+            poll_count += 1
+            elapsed = time.time() - start
+
             try:
 
-                if self.sensor.readImage():
-
-                    print(
-                        "Fingerprint detected."
-                    )
-
-                    return True
+                result = self.sensor.readImage()
 
             except Exception as error:
 
+                error_count += 1
+
                 print(
-                    "Fingerprint read error:",
-                    error
+                    f"[DIAG] t={elapsed:.1f}s "
+                    f"poll#{poll_count} "
+                    f"readImage() RAISED -> {error!r} "
+                    f"(errors so far: {error_count})"
                 )
 
-                return False
+                # readImage() raises when no finger is present yet.
+                # That's the normal "still waiting" state, not a
+                # fatal error, so keep polling instead of bailing out.
+
+                time.sleep(0.1)
+
+                continue
+
+            if result:
+
+                print(
+                    f"[DIAG] t={elapsed:.1f}s "
+                    f"poll#{poll_count} "
+                    f"readImage() -> True (finger captured)"
+                )
+
+                print(
+                    "Fingerprint detected."
+                )
+
+                print(
+                    f"[DIAG] Summary: {poll_count} polls, "
+                    f"{false_count} False reads, "
+                    f"{error_count} exceptions before success."
+                )
+
+                return True
+
+            false_count += 1
+
+            print(
+                f"[DIAG] t={elapsed:.1f}s "
+                f"poll#{poll_count} "
+                f"readImage() -> False "
+                f"(no finger detected yet, "
+                f"False count: {false_count})"
+            )
 
             time.sleep(0.1)
 
         print(
             "Fingerprint timeout."
+        )
+
+        print(
+            f"[DIAG] Summary: TIMED OUT after {poll_count} polls "
+            f"({false_count} False reads, "
+            f"{error_count} exceptions). "
+            f"If False count is high and never flips to True, "
+            f"this points to a physical scan issue: dirty/scratched "
+            f"sensor window, finger not covering the full sensor "
+            f"area, bright ambient light washing out the optical "
+            f"read, or insufficient/sagging VCC. If error_count is "
+            f"high instead, check wiring/power stability."
         )
 
         return False
@@ -260,7 +353,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # CHECK IF FINGERPRINT ID ALREADY EXISTS
+    # CHECK TEMPLATE
     # ============================================================
 
     def template_exists(
@@ -280,9 +373,6 @@ class FingerprintHandler:
 
         try:
 
-            # loadTemplate returns True when
-            # a template exists in the requested slot.
-
             return self.sensor.loadTemplate(
                 template_id,
                 FINGERPRINT_CHARBUFFER1
@@ -294,7 +384,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # ENROLL FINGERPRINT
+    # ENROLL
     # ============================================================
 
     def enroll(
@@ -314,14 +404,8 @@ class FingerprintHandler:
             person_id
         ):
 
-            print()
             print(
                 "Invalid fingerprint ID."
-            )
-
-            print(
-                "Fingerprint ID must be between 0 and",
-                self.get_capacity() - 1
             )
 
             return False
@@ -332,12 +416,13 @@ class FingerprintHandler:
         print("================================")
 
         print(
-            "Person ID:",
+            "Fingerprint ID:",
             person_id
         )
 
+
         # --------------------------------------------------------
-        # CHECK WHETHER SLOT IS ALREADY USED
+        # CHECK EXISTING TEMPLATE
         # --------------------------------------------------------
 
         if self.template_exists(
@@ -346,17 +431,11 @@ class FingerprintHandler:
 
             print()
             print(
-                "This person already has a fingerprint."
+                "This fingerprint ID is already occupied."
             )
-
-            print(
-                "Fingerprint ID:",
-                person_id
-            )
-
-            print("================================")
 
             return False
+
 
         # --------------------------------------------------------
         # FIRST SCAN
@@ -381,10 +460,13 @@ class FingerprintHandler:
                     "Could not process first fingerprint."
                 )
 
+                self.wait_for_no_finger()
+
                 return False
 
+
             # ----------------------------------------------------
-            # CHECK IF THIS FINGER IS ALREADY REGISTERED
+            # CHECK IF FINGER ALREADY EXISTS
             # ----------------------------------------------------
 
             try:
@@ -418,7 +500,9 @@ class FingerprintHandler:
 
                 pass
 
+
             self.wait_for_no_finger()
+
 
             # ----------------------------------------------------
             # SECOND SCAN
@@ -437,6 +521,7 @@ class FingerprintHandler:
 
                 return False
 
+
             if not self.sensor.convertImage(
                 FINGERPRINT_CHARBUFFER2
             ):
@@ -445,7 +530,10 @@ class FingerprintHandler:
                     "Could not process second fingerprint."
                 )
 
+                self.wait_for_no_finger()
+
                 return False
+
 
             # ----------------------------------------------------
             # CREATE TEMPLATE
@@ -467,8 +555,9 @@ class FingerprintHandler:
 
                 return False
 
+
             # ----------------------------------------------------
-            # STORE TEMPLATE
+            # STORE
             # ----------------------------------------------------
 
             print(
@@ -487,19 +576,18 @@ class FingerprintHandler:
             print("================================")
 
             print(
-                "Person ID:",
-                person_id
-            )
-
-            print(
                 "Fingerprint ID:",
                 person_id
             )
 
-            print("================================")
+            print(
+                "================================"
+            )
+
             print()
 
             return True
+
 
         except Exception as error:
 
@@ -518,7 +606,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # FINGERPRINT LOGIN
+    # LOGIN
     # ============================================================
 
     def login(
@@ -559,11 +647,14 @@ class FingerprintHandler:
 
                 return None
 
+
             position, accuracy = (
                 self.sensor.searchTemplate()
             )
 
+
             self.wait_for_no_finger()
+
 
             if position < 0:
 
@@ -574,6 +665,7 @@ class FingerprintHandler:
                 print()
 
                 return None
+
 
             print()
             print("================================")
@@ -590,13 +682,17 @@ class FingerprintHandler:
                 accuracy
             )
 
-            print("================================")
+            print(
+                "================================"
+            )
+
             print()
 
             return {
                 "id": position,
                 "accuracy": accuracy
             }
+
 
         except Exception as error:
 
@@ -611,7 +707,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # DELETE ONE FINGERPRINT
+    # DELETE
     # ============================================================
 
     def delete(
@@ -636,22 +732,24 @@ class FingerprintHandler:
             ):
 
                 print(
-                    "No fingerprint found for Person ID:",
+                    "No fingerprint found for ID:",
                     person_id
                 )
 
                 return False
+
 
             self.sensor.deleteTemplate(
                 person_id
             )
 
             print(
-                "Fingerprint deleted for Person ID:",
+                "Fingerprint deleted:",
                 person_id
             )
 
             return True
+
 
         except Exception as error:
 
@@ -664,12 +762,13 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # CLEAR ALL FINGERPRINT DATA
+    # CLEAR DATABASE
     # ============================================================
 
     def clear_database(self):
 
         if not self.connected:
+
             raise RuntimeError(
                 "Fingerprint sensor is not connected."
             )
@@ -680,7 +779,7 @@ class FingerprintHandler:
 
 
     # ============================================================
-    # RESET ALL FINGERPRINT DATA
+    # RESET ALL
     # ============================================================
 
     def reset_all(self):
@@ -719,13 +818,19 @@ class FingerprintHandler:
             print("================================")
             print(" FINGERPRINT RESET COMPLETE")
             print("================================")
+
             print(
                 "All fingerprint templates were deleted."
             )
-            print("================================")
+
+            print(
+                "================================"
+            )
+
             print()
 
             return True
+
 
         except Exception as error:
 
@@ -747,13 +852,9 @@ class FingerprintHandler:
     def close(self):
 
         self.sensor = None
+
         self.connected = False
 
         print(
             "Fingerprint sensor closed."
         )
-
-
-# =================================================================
-# STANDALONE TEST
-# =================================================================

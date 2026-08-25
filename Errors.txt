@@ -1,9 +1,18 @@
 import serial
+import time
 
 ser = serial.Serial("/dev/ttyAMA0", 57600, timeout=2)
 
-ser.write(bytes.fromhex("EF01FFFFFFFF0100071300000000001B"))
+def send_command(command):
+    ser.write(bytes.fromhex(command))
+    return ser.read(20)
 
-data = ser.read(20)
+print("Testing AS608...")
+print("Place your finger on the sensor.")
 
-print(data.hex(" "))
+while True:
+    response = send_command("EF01FFFFFFFF010003010005")
+
+    print("Response:", response.hex(" "))
+
+    time.sleep(1)

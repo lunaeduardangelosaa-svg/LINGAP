@@ -1,14 +1,11 @@
 import cv2
 import json
 import os
+import subprocess
 
 from google import genai
 from google.genai import types
 
-
-# ============================================
-# PRESCRIPTION DIRECTORY
-# ============================================
 
 PRESCRIPTION_DIR = "prescriptions"
 
@@ -17,40 +14,19 @@ class PrescriptionHandler:
 
     def __init__(self):
 
-        # ========================================
-        # PUT YOUR NEW GEMINI API KEY HERE
-        # ========================================
+        api_key = "AQ.Ab8RN6LR0-eI-xXqODj3Oc4H9qizKHYd0ofoPIwlLaT4qvl3Tg"
 
-        api_key = "AQ.Ab8RN6Luuvnoiqf5TLwpnnx0Zt8x7q5d4_CRwXm_IuXg1Dgu6Q"
-
-
-        if (
-            not api_key
-            or
-            api_key == "PUT_YOUR_NEW_GEMINI_API_KEY_HERE"
-        ):
+        if not api_key:
 
             raise ValueError(
-                "Please put your Gemini API key "
-                "in prescription_handler.py"
+                "Gemini API key is not set."
             )
-
-
-        # ========================================
-        # GEMINI
-        # ========================================
 
         self.client = genai.Client(
             api_key=api_key
         )
 
-
         self.model = "gemini-3.6-flash"
-
-
-        # ========================================
-        # CREATE DIRECTORY
-        # ========================================
 
         os.makedirs(
             PRESCRIPTION_DIR,
@@ -58,9 +34,30 @@ class PrescriptionHandler:
         )
 
 
-    # ============================================
-    # GET FILE FOR PERSON
-    # ============================================
+    def speak(self, text):
+
+        try:
+
+            subprocess.Popen(
+                [
+                    "espeak-ng",
+                    "-s",
+                    "150",
+                    "-v",
+                    "en",
+                    str(text)
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+        except Exception as error:
+
+            print(
+                "Voice error:",
+                error
+            )
+
 
     def get_file(
         self,
@@ -68,18 +65,12 @@ class PrescriptionHandler:
     ):
 
         return os.path.join(
-
             PRESCRIPTION_DIR,
-
             "person_"
             + str(person_id)
             + ".json"
         )
 
-
-    # ============================================
-    # SAVE PRESCRIPTION
-    # ============================================
 
     def save(
         self,
@@ -87,12 +78,9 @@ class PrescriptionHandler:
         data
     ):
 
-        file_path = (
-            self.get_file(
-                person_id
-            )
+        file_path = self.get_file(
+            person_id
         )
-
 
         with open(
             file_path,
@@ -101,54 +89,46 @@ class PrescriptionHandler:
         ) as f:
 
             json.dump(
-
                 data,
-
                 f,
-
                 indent=4,
-
                 ensure_ascii=False
             )
 
-
         print()
+        print("================================")
+        print("PRESCRIPTION STORED")
+        print("================================")
         print(
-            "Prescription saved."
-        )
-        print(
-            "Person ID:",
+            "PERSON ID:",
             person_id
         )
         print(
-            "File:",
+            "FILE:",
             file_path
         )
+        print("================================")
         print()
 
+        self.speak(
+            "Prescription stored."
+        )
 
-    # ============================================
-    # LOAD PRESCRIPTION
-    # ============================================
 
     def load(
         self,
         person_id
     ):
 
-        file_path = (
-            self.get_file(
-                person_id
-            )
+        file_path = self.get_file(
+            person_id
         )
-
 
         if not os.path.exists(
             file_path
         ):
 
             return None
-
 
         try:
 
@@ -160,7 +140,6 @@ class PrescriptionHandler:
 
                 return json.load(f)
 
-
         except Exception as error:
 
             print(
@@ -171,21 +150,14 @@ class PrescriptionHandler:
             return None
 
 
-    # ============================================
-    # DELETE PRESCRIPTION
-    # ============================================
-
     def delete(
         self,
         person_id
     ):
 
-        file_path = (
-            self.get_file(
-                person_id
-            )
+        file_path = self.get_file(
+            person_id
         )
-
 
         if os.path.exists(
             file_path
@@ -200,10 +172,6 @@ class PrescriptionHandler:
             )
 
 
-    # ============================================
-    # READ IMAGE WITH GEMINI
-    # ============================================
-
     def read(
         self,
         frame
@@ -213,30 +181,17 @@ class PrescriptionHandler:
 
             return None
 
-
         image_path = "prescription.jpg"
 
-
-        # ========================================
-        # Picamera2 gives RGB.
-        # OpenCV wants BGR for imwrite.
-        # ========================================
-
         bgr = cv2.cvtColor(
-
             frame,
-
             cv2.COLOR_RGB2BGR
         )
 
-
         success = cv2.imwrite(
-
             image_path,
-
             bgr
         )
-
 
         if not success:
 
@@ -246,27 +201,19 @@ class PrescriptionHandler:
 
             return None
 
-
         try:
 
             print()
+            print("================================")
+            print("SHOW PRESCRIPTION")
+            print("================================")
             print(
-                "================================"
-            )
-            print(
-                "SENDING TO GEMINI"
+                "Sending prescription to Gemini..."
             )
             print(
                 "Please wait..."
             )
-            print(
-                "================================"
-            )
-
-
-            # ====================================
-            # IMAGE
-            # ====================================
+            print("================================")
 
             with open(
                 image_path,
@@ -277,20 +224,12 @@ class PrescriptionHandler:
                     image_file.read()
                 )
 
-
             image_part = (
                 types.Part.from_bytes(
-
                     data=image_bytes,
-
                     mime_type="image/jpeg"
                 )
             )
-
-
-            # ====================================
-            # JSON SCHEMA
-            # ====================================
 
             prescription_schema = {
 
@@ -360,11 +299,6 @@ class PrescriptionHandler:
                 ]
             }
 
-
-            # ====================================
-            # PROMPT
-            # ====================================
-
             prompt = """
 Read this prescription image.
 
@@ -397,9 +331,7 @@ Name:
 Exact medicine name when readable.
 
 Hour:
-The frequency or schedule, num hour
-
-Examples:
+The frequency or schedule as a number of hours.
 
 OtherInfo:
 Everything else visible about that medicine,
@@ -432,13 +364,10 @@ Do not recommend medication.
 
 Do not provide medical advice.
 
+Convert roman numeral numbers to numbers.
+
 This is ONLY transcription and data extraction.
 """
-
-
-            # ====================================
-            # GEMINI
-            # ====================================
 
             response = (
                 self.client.models.generate_content(
@@ -450,24 +379,22 @@ This is ONLY transcription and data extraction.
                         prompt
                     ],
 
-                    config=types.GenerateContentConfig(
+                    config=(
+                        types.GenerateContentConfig(
 
-                        response_mime_type="application/json",
+                            response_mime_type=(
+                                "application/json"
+                            ),
 
-                        response_json_schema=(
-                            prescription_schema
+                            response_json_schema=(
+                                prescription_schema
+                            )
                         )
                     )
                 )
             )
 
-
-            # ====================================
-            # RESPONSE
-            # ====================================
-
             text = response.text
-
 
             if not text:
 
@@ -475,20 +402,17 @@ This is ONLY transcription and data extraction.
                     "Gemini returned no text."
                 )
 
+                self.speak(
+                    "Prescription not read."
+                )
+
                 return None
-
-
-            # ====================================
-            # JSON
-            # ====================================
 
             data = json.loads(
                 text
             )
 
-
             return data
-
 
         except json.JSONDecodeError as error:
 
@@ -497,34 +421,27 @@ This is ONLY transcription and data extraction.
                 error
             )
 
-            return None
+            self.speak(
+                "Prescription not read."
+            )
 
+            return None
 
         except Exception as error:
 
             print()
-            print(
-                "================================"
-            )
-            print(
-                "GEMINI ERROR"
-            )
-            print(
-                "================================"
-            )
-            print(
-                error
-            )
-            print(
-                "================================"
+            print("================================")
+            print("GEMINI ERROR")
+            print("================================")
+            print(error)
+            print("================================")
+
+            self.speak(
+                "Prescription not read."
             )
 
             return None
 
-
-    # ============================================
-    # DISPLAY PRESCRIPTION
-    # ============================================
 
     def display(
         self,
@@ -532,16 +449,9 @@ This is ONLY transcription and data extraction.
     ):
 
         print()
-        print(
-            "================================"
-        )
-        print(
-            "          PRESCRIPTION"
-        )
-        print(
-            "================================"
-        )
-
+        print("================================")
+        print("          PRESCRIPTION")
+        print("================================")
 
         if not data:
 
@@ -555,7 +465,6 @@ This is ONLY transcription and data extraction.
 
             return
 
-
         print(
             "Patient:",
             data.get(
@@ -563,7 +472,6 @@ This is ONLY transcription and data extraction.
                 "NOT VISIBLE"
             )
         )
-
 
         print(
             "Doctor:",
@@ -573,7 +481,6 @@ This is ONLY transcription and data extraction.
             )
         )
 
-
         print(
             "Age:",
             data.get(
@@ -581,7 +488,6 @@ This is ONLY transcription and data extraction.
                 "NOT VISIBLE"
             )
         )
-
 
         print(
             "Sex:",
@@ -591,7 +497,6 @@ This is ONLY transcription and data extraction.
             )
         )
 
-
         print(
             "Date:",
             data.get(
@@ -600,23 +505,18 @@ This is ONLY transcription and data extraction.
             )
         )
 
-
         print()
         print(
             "MEDICINES:"
         )
-
 
         medicines = data.get(
             "Medicines",
             []
         )
 
-
         for index, medicine in enumerate(
-
             medicines,
-
             start=1
         ):
 
@@ -650,32 +550,32 @@ This is ONLY transcription and data extraction.
                 )
             )
 
-
         print()
         print(
             "================================"
         )
 
-
-    # ============================================
-    # CAMERA READER
-    # ============================================
 
     def read_from_camera(
         self,
-        camera
+        camera,
+        person_id,
+        person_name
     ):
 
         print()
+        print("================================")
+        print("       PRESCRIPTION READER")
+        print("================================")
         print(
-            "================================"
+            "PERSON:",
+            person_name
         )
         print(
-            "       PRESCRIPTION READER"
+            "ID:",
+            person_id
         )
-        print(
-            "================================"
-        )
+        print("================================")
         print(
             "Place prescription inside the box."
         )
@@ -686,110 +586,68 @@ This is ONLY transcription and data extraction.
         print(
             "Q = CANCEL"
         )
-        print(
-            "================================"
+        print("================================")
+
+        self.speak(
+            "Show prescription."
         )
 
-
         captured_frame = None
-
 
         while True:
 
             frame = camera.capture()
 
-
             if frame is None:
 
                 continue
 
-
             display = frame.copy()
-
 
             height, width = (
                 display.shape[:2]
             )
 
-
-            # =================================
-            # BOX
-            # =================================
-
             cv2.rectangle(
-
                 display,
-
                 (40, 90),
-
                 (
                     width - 40,
                     height - 90
                 ),
-
                 (0, 255, 255),
-
                 2
             )
 
-
-            # =================================
-            # TEXT
-            # =================================
-
             cv2.putText(
-
                 display,
-
                 "PLACE PRESCRIPTION INSIDE BOX",
-
                 (50, 50),
-
                 cv2.FONT_HERSHEY_SIMPLEX,
-
                 0.65,
-
                 (0, 255, 255),
-
                 2
             )
-
 
             cv2.putText(
-
                 display,
-
                 "SPACE = CAPTURE   Q = CANCEL",
-
                 (50, height - 40),
-
                 cv2.FONT_HERSHEY_SIMPLEX,
-
                 0.6,
-
                 (255, 255, 255),
-
                 2
             )
-
 
             cv2.imshow(
-
                 "Prescription Reader",
-
                 display
             )
 
-
             key = (
-                cv2.waitKey(1) &
-                0xFF
+                cv2.waitKey(1)
+                & 0xFF
             )
-
-
-            # =================================
-            # CANCEL
-            # =================================
 
             if key == ord("q"):
 
@@ -797,12 +655,11 @@ This is ONLY transcription and data extraction.
                     "Prescription Reader"
                 )
 
+                self.speak(
+                    "Prescription cancelled."
+                )
+
                 return None
-
-
-            # =================================
-            # CAPTURE
-            # =================================
 
             if key == 32:
 
@@ -812,28 +669,31 @@ This is ONLY transcription and data extraction.
 
                 break
 
-
         cv2.destroyWindow(
             "Prescription Reader"
         )
-
-
-        # ========================================
-        # GEMINI
-        # ========================================
 
         data = self.read(
             captured_frame
         )
 
+        if data is None:
 
-        # ========================================
-        # DISPLAY
-        # ========================================
+            print()
+            print(
+                "PRESCRIPTION NOT READ"
+            )
+            print()
+
+            return None
 
         self.display(
             data
         )
 
+        self.save(
+            person_id,
+            data
+        )
 
         return data

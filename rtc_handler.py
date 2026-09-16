@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import subprocess
+
 from datetime import datetime
 
 import RPi.GPIO as GPIO
@@ -9,38 +10,28 @@ import RPi.GPIO as GPIO
 
 class RTCHandler:
 
-    # ============================================================
-    # GPIO
-    # ============================================================
-
     BUZZER_PIN = 26
-
-
-    # ============================================================
-    # INIT
-    # ============================================================
 
     def __init__(
         self,
-        prescription_handler
+        prescription_handler,
+        dispenser_handler=None
     ):
 
         self.prescription_handler = (
             prescription_handler
         )
 
+        self.dispenser_handler = (
+            dispenser_handler
+        )
+
         self.triggered = {}
 
         self.active_person_id = None
-
         self.active_person_name = None
-
         self.active_medicine_name = None
-
-
-        # ========================================================
-        # GPIO SETUP
-        # ========================================================
+        self.active_medicine_index = None
 
         GPIO.setmode(
             GPIO.BCM
@@ -54,11 +45,6 @@ class RTCHandler:
 
         self.buzzer_on = False
 
-
-        # ========================================================
-        # STOP THREAD
-        # ========================================================
-
         self._stop_thread_flag = False
 
         self._listener_thread = threading.Thread(
@@ -67,11 +53,6 @@ class RTCHandler:
         )
 
         self._listener_thread.start()
-
-
-    # ============================================================
-    # TEXT TO SPEECH
-    # ============================================================
 
     def speak(
         self,
@@ -83,24 +64,17 @@ class RTCHandler:
             subprocess.Popen(
                 [
                     "espeak-ng",
-
                     "-v",
                     "en",
-
                     "-s",
                     "145",
-
                     "-p",
                     "45",
-
                     "-a",
                     "180",
-
                     text
                 ],
-
                 stdout=subprocess.DEVNULL,
-
                 stderr=subprocess.DEVNULL
             )
 
@@ -111,11 +85,6 @@ class RTCHandler:
                 error
             )
 
-
-    # ============================================================
-    # LISTEN FOR B KEY
-    # ============================================================
-
     def _listen_for_stop_key(
         self
     ):
@@ -123,19 +92,14 @@ class RTCHandler:
         while not self._stop_thread_flag:
 
             try:
-
                 key = input()
 
             except EOFError:
-
                 break
 
             except Exception:
-
                 time.sleep(0.1)
-
                 continue
-
 
             if key.strip().lower() == "b":
 
@@ -144,21 +108,15 @@ class RTCHandler:
                     self.stop_buzzer()
 
                     self.active_person_id = None
-
                     self.active_person_name = None
-
                     self.active_medicine_name = None
+                    self.active_medicine_index = None
 
                 else:
 
                     print(
                         "Buzzer is not currently active."
                     )
-
-
-    # ============================================================
-    # CHECK ALL PEOPLE
-    # ============================================================
 
     def check_all_people(
         self,
@@ -171,11 +129,6 @@ class RTCHandler:
                 person
             )
 
-
-    # ============================================================
-    # CHECK ONE PERSON
-    # ============================================================
-
     def check_person(
         self,
         person
@@ -186,26 +139,14 @@ class RTCHandler:
         )
 
         if person_id is None:
-
             return
-
-
-        # ========================================================
-        # LOAD PRESCRIPTION
-        # ========================================================
 
         data = self.prescription_handler.load(
             person_id
         )
 
         if not data:
-
             return
-
-
-        # ========================================================
-        # GET PRESCRIPTION FILE
-        # ========================================================
 
         file_path = (
             self.prescription_handler
@@ -214,17 +155,10 @@ class RTCHandler:
             )
         )
 
-
         if not os.path.exists(
             file_path
         ):
-
             return
-
-
-        # ========================================================
-        # PRESCRIPTION START TIME
-        # ========================================================
 
         start_time = os.path.getmtime(
             file_path
@@ -238,33 +172,21 @@ class RTCHandler:
             start_time
         )
 
-
-        # ========================================================
-        # MEDICINES
-        # ========================================================
-
         medicines = data.get(
             "Medicines",
             []
         )
 
-
         for index, medicine in enumerate(
             medicines
         ):
-
-            # ====================================================
-            # GET HOUR INTERVAL
-            # ====================================================
 
             hour_value = medicine.get(
                 "Hour"
             )
 
             if hour_value is None:
-
                 continue
-
 
             try:
 
@@ -276,18 +198,10 @@ class RTCHandler:
                 ValueError,
                 TypeError
             ):
-
                 continue
-
 
             if hours <= 0:
-
                 continue
-
-
-            # ====================================================
-            # CONVERT HOURS TO SECONDS
-            # ====================================================
 
             interval_seconds = (
                 hours
@@ -297,19 +211,8 @@ class RTCHandler:
                 60
             )
 
-
-            # ====================================================
-            # NOT YET TIME
-            # ====================================================
-
             if elapsed < interval_seconds:
-
                 continue
-
-
-            # ====================================================
-            # DETERMINE CURRENT CYCLE
-            # ====================================================
 
             cycle = int(
                 elapsed
@@ -317,20 +220,11 @@ class RTCHandler:
                 interval_seconds
             )
 
-
-            # ====================================================
-            # UNIQUE REMINDER KEY
-            # ====================================================
-
             reminder_key = (
-
                 str(person_id)
-
                 + "_"
-
                 + str(index)
             )
-
 
             last_cycle = (
                 self.triggered.get(
@@ -339,63 +233,38 @@ class RTCHandler:
                 )
             )
 
-
-            # ====================================================
-            # ALREADY TRIGGERED
-            # ====================================================
-
             if cycle <= last_cycle:
-
                 continue
-
 
             self.triggered[
                 reminder_key
             ] = cycle
 
-
-            # ====================================================
-            # BUZZER ALREADY ACTIVE
-            # ====================================================
-
             if self.buzzer_on:
 
                 print()
-
                 print(
                     "================================"
                 )
-
                 print(
                     "ANOTHER MEDICATION REMINDER"
                 )
-
                 print(
                     "================================"
                 )
-
                 print(
                     "Person ID:",
                     person_id
                 )
-
                 print(
                     "Current active Person ID:",
                     self.active_person_id
                 )
-
                 print(
                     "Buzzer is already active."
                 )
-
                 print()
-
                 continue
-
-
-            # ====================================================
-            # SET ACTIVE REMINDER
-            # ====================================================
 
             self.active_person_id = (
                 person_id
@@ -415,40 +284,18 @@ class RTCHandler:
                 )
             )
 
-
-            # ====================================================
-            # PRINT REMINDER
-            # ====================================================
+            self.active_medicine_index = index
 
             self.print_reminder(
-
                 person,
-
                 medicine,
-
                 hours,
-
                 interval_seconds
             )
 
-
-            # ====================================================
-            # VOICE
-            # ====================================================
-
             self.speak_reminder()
 
-
-            # ====================================================
-            # BUZZER
-            # ====================================================
-
             self.start_buzzer()
-
-
-    # ============================================================
-    # VOICE MEDICATION REMINDER
-    # ============================================================
 
     def speak_reminder(
         self
@@ -466,7 +313,6 @@ class RTCHandler:
             "medicine"
         )
 
-
         def speak():
 
             for i in range(3):
@@ -474,39 +320,27 @@ class RTCHandler:
                 try:
 
                     message = (
-
                         person_name
-
                         + ", it is time to take your "
-
                         + medicine_name
                     )
-
 
                     subprocess.run(
                         [
                             "espeak-ng",
-
                             "-v",
                             "en",
-
                             "-s",
                             "145",
-
                             "-p",
                             "45",
-
                             "-a",
                             "180",
-
                             message
                         ],
-
                         stdout=subprocess.DEVNULL,
-
                         stderr=subprocess.DEVNULL
                     )
-
 
                 except Exception as error:
 
@@ -515,23 +349,16 @@ class RTCHandler:
                         error
                     )
 
-
                 if i < 2:
 
                     time.sleep(
                         1
                     )
 
-
         threading.Thread(
             target=speak,
             daemon=True
         ).start()
-
-
-    # ============================================================
-    # ACKNOWLEDGE MEDICATION
-    # ============================================================
 
     def acknowledge(
         self,
@@ -546,7 +373,6 @@ class RTCHandler:
 
             return False
 
-
         active_id = str(
             self.active_person_id
         )
@@ -555,140 +381,150 @@ class RTCHandler:
             person_id
         )
 
-
-        # ========================================================
-        # WRONG PERSON
-        # ========================================================
-
         if active_id != scanned_id:
 
             print()
-
             print(
                 "================================"
             )
-
             print(
                 "       WRONG PERSON"
             )
-
             print(
                 "================================"
             )
-
             print(
                 "Medication Person ID:",
                 self.active_person_id
             )
-
             print(
                 "Scanned Person ID:",
                 person_id
             )
-
             print()
-
             print(
                 "BUZZER REMAINS ON"
             )
-
             print(
                 "================================"
             )
-
             print()
-
-
-            # ----------------------------------------------------
-            # VOICE WARNING
-            # ----------------------------------------------------
 
             self.speak(
                 "Incorrect person. "
                 "Please log in with the correct person."
             )
 
-
             return False
 
-
-        # ========================================================
-        # CORRECT PERSON
-        # ========================================================
-
         print()
-
         print(
             "================================"
         )
-
         print(
             "    MEDICATION ACKNOWLEDGED"
         )
-
         print(
             "================================"
         )
-
         print(
             "Medication Person ID:",
             self.active_person_id
         )
-
         print(
             "Scanned Person ID:",
             person_id
         )
-
         print()
-
         print(
             "Correct person."
         )
-
-
-        # ========================================================
-        # VOICE
-        # ========================================================
 
         self.speak(
             "Medication acknowledged. "
             "You may take your medicine."
         )
 
+        if (
+            self.dispenser_handler is not None
+            and self.active_medicine_index is not None
+        ):
 
-        # ========================================================
-        # STOP BUZZER
-        # ========================================================
+            data = self.prescription_handler.load(
+                person_id
+            )
+
+            medicine = None
+
+            if data:
+
+                medicines = data.get(
+                    "Medicines",
+                    []
+                )
+
+                if (
+                    self.active_medicine_index
+                    < len(medicines)
+                ):
+
+                    medicine = medicines[
+                        self.active_medicine_index
+                    ]
+
+            if medicine is not None:
+
+                shape = medicine.get(
+                    "Shape"
+                )
+
+                medicine_name = medicine.get(
+                    "Name",
+                    self.active_medicine_name
+                )
+
+                if shape in ("round", "capsule"):
+
+                    threading.Thread(
+                        target=self.dispenser_handler.dispense,
+                        args=(
+                            medicine_name,
+                            shape
+                        ),
+                        daemon=True
+                    ).start()
+
+                else:
+
+                    print(
+                        "No shape recorded for medicine, "
+                        "skipping dispense:",
+                        medicine_name
+                    )
+
+            else:
+
+                print(
+                    "Could not find medicine for dispensing."
+                )
 
         self.stop_buzzer()
 
-
         self.active_person_id = None
-
         self.active_person_name = None
-
         self.active_medicine_name = None
-
+        self.active_medicine_index = None
 
         print(
             "Medication acknowledged by Person ID:",
             person_id
         )
-
         print(
             "================================"
         )
-
         print()
 
-
         return True
-
-
-    # ============================================================
-    # CLEAR PERSON TRIGGERS
-    # ============================================================
 
     def clear_triggers_for_person(
         self,
@@ -700,18 +536,13 @@ class RTCHandler:
             + "_"
         )
 
-
         keys_to_remove = [
-
             key
-
             for key in self.triggered
-
             if key.startswith(
                 prefix
             )
         ]
-
 
         for key in keys_to_remove:
 
@@ -719,84 +550,57 @@ class RTCHandler:
                 key
             ]
 
-
-    # ============================================================
-    # START BUZZER
-    # ============================================================
-
     def start_buzzer(
         self
     ):
 
         if self.buzzer_on:
-
             return
-
 
         GPIO.output(
             self.BUZZER_PIN,
             GPIO.HIGH
         )
 
-
         self.buzzer_on = True
 
-
         print()
-
         print(
             "================================"
         )
-
         print(
             "        BUZZER ON"
         )
-
         print(
             "================================"
         )
-
         print(
             "Medication Person ID:",
             self.active_person_id
         )
-
         print(
             "Patient:",
             self.active_person_name
         )
-
         print(
             "Medicine:",
             self.active_medicine_name
         )
-
         print()
-
         print(
             "Only this person's ID can stop the buzzer:"
         )
-
         print(
             self.active_person_id
         )
-
         print()
-
         print(
             "Log in with face/fingerprint."
         )
-
         print(
             "Or press B for manual stop."
         )
-
         print()
-
-
-    # ============================================================
-    # STOP BUZZER
-    # ============================================================
 
     def stop_buzzer(
         self
@@ -807,18 +611,11 @@ class RTCHandler:
             GPIO.LOW
         )
 
-
         self.buzzer_on = False
-
 
         print(
             "BUZZER STOPPED"
         )
-
-
-    # ============================================================
-    # PRINT REMINDER
-    # ============================================================
 
     def print_reminder(
         self,
@@ -830,21 +627,16 @@ class RTCHandler:
 
         now = datetime.now()
 
-
         print()
-
         print(
             "================================"
         )
-
         print(
             "       MEDICATION REMINDER"
         )
-
         print(
             "================================"
         )
-
 
         print(
             "TIME:",
@@ -852,7 +644,6 @@ class RTCHandler:
                 "%Y-%m-%d %H:%M:%S"
             )
         )
-
 
         print(
             "PATIENT:",
@@ -862,7 +653,6 @@ class RTCHandler:
             )
         )
 
-
         print(
             "PERSON ID:",
             person.get(
@@ -871,9 +661,7 @@ class RTCHandler:
             )
         )
 
-
         print()
-
 
         print(
             "MEDICINE:",
@@ -883,14 +671,12 @@ class RTCHandler:
             )
         )
 
-
         print(
             "INTERVAL:",
             self.format_interval(
                 interval_seconds
             )
         )
-
 
         print(
             "INSTRUCTIONS:",
@@ -900,34 +686,23 @@ class RTCHandler:
             )
         )
 
-
         print()
-
 
         print(
             "================================"
         )
-
         print(
             "     TIME TO TAKE MEDICINE"
         )
-
         print(
             "================================"
         )
-
 
         print(
             "Log in with face/fingerprint."
         )
 
-
         print()
-
-
-    # ============================================================
-    # FORMAT INTERVAL
-    # ============================================================
 
     def format_interval(
         self,
@@ -937,17 +712,14 @@ class RTCHandler:
         if seconds < 60:
 
             return (
-
                 str(
                     round(
                         seconds,
                         2
                     )
                 )
-
                 + " seconds"
             )
-
 
         if seconds < 3600:
 
@@ -957,19 +729,15 @@ class RTCHandler:
                 60
             )
 
-
             return (
-
                 str(
                     round(
                         minutes,
                         2
                     )
                 )
-
                 + " minutes"
             )
-
 
         hours = (
             seconds
@@ -977,23 +745,15 @@ class RTCHandler:
             3600
         )
 
-
         return (
-
             str(
                 round(
                     hours,
                     2
                 )
             )
-
             + " hours"
         )
-
-
-    # ============================================================
-    # CLEANUP
-    # ============================================================
 
     def cleanup(
         self
@@ -1001,16 +761,12 @@ class RTCHandler:
 
         self._stop_thread_flag = True
 
-
         self.stop_buzzer()
 
-
         self.active_person_id = None
-
         self.active_person_name = None
-
         self.active_medicine_name = None
-
+        self.active_medicine_index = None
 
         GPIO.cleanup(
             self.BUZZER_PIN
